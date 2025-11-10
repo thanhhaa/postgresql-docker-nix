@@ -1,0 +1,18 @@
+# Environment files
+# .env
+# .env.local
+# .env.dev
+# .env.staging
+# .env.prod
+# .env.*.local
+
+# Backups
+backups/*.sql
+backups/*.dump
+
+# Database data (nếu không dùng volumes)
+data/
+
+# Logs
+*.log
+logs/

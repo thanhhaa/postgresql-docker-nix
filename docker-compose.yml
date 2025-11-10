@@ -1,0 +1,157 @@
+# Docker Compose configuration for PostgreSQL development environment
+# Cấu hình Docker Compose cho môi trường phát triển PostgreSQL
+# 
+# This file defines a complete development setup with PostgreSQL database and pgAdmin GUI
+# File này định nghĩa một thiết lập phát triển hoàn chỉnh với database PostgreSQL và giao diện pgAdmin
+
+# version: '3.8'  # Docker Compose file format version / Phiên bản định dạng file Docker Compose
+
+services:
+  # =============================================================================
+  # DEVELOPMENT ENVIRONMENT
+  # =============================================================================
+  # Main PostgreSQL database service - this is the heart of our development environment
+  # Dịch vụ database PostgreSQL chính - đây là trái tim của môi trường phát triển
+  postgres-dev:
+    # Using Alpine Linux version for smaller size and better security
+    # Sử dụng phiên bản Alpine Linux để giảm kích thước và tăng bảo mật
+    image: postgres:15-alpine
+    # Passes environment variables into the container
+    env_file:
+      # You can specify multiple env files
+      - .env.dev
+    
+    # Container name for easy identification and management
+    # Tên container để dễ dàng nhận diện và quản lý
+    # ${VARIABLE:-default_value}
+    container_name: ${DEV_POSTGRES_CONTAINER_NAME:?error DEV_POSTGRES_CONTAINER_NAME not set}
+    
+    # Environment variables configure the database on first startup
+    # Các biến môi trường cấu hình database khi khởi động lần đầu
+    environment:
+      # Default database name - change this to match your project
+      # Tên database mặc định - thay đổi để phù hợp với dự án của bạn
+      POSTGRES_DB: ${DEV_POSTGRES_DB_NAME:?error DEV_POSTGRES_DB_NAME not set}
+      
+      # Database superuser username - 'developer' is descriptive and safFe for dev
+      POSTGRES_USER: ${DEV_POSTGRES_USER:?error DEV_POSTGRES_USER not set}
+      
+      # Password for development - NEVER use simple passwords in production!
+      POSTGRES_PASSWORD: ${DEV_POSTGRES_PASSWORD:?error DEV_POSTGRES_PASSWORD not set}
+      
+      # Database encoding and collation settings for Vietnamese text support
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=en_US.UTF-8 --lc-ctype=en_US.UTF-8"
+    
+    # Port mapping: host_port:container_port
+    ports:
+      - "${DEV_POSTGRES_PORT}:${DEV_POSTGRES_INTERNAL_PORT}"  # Standard PostgreSQL port / Cổng PostgreSQL chuẩn
+    
+    # Volumes for data persistence and initialization scripts
+    volumes:
+      # Named volume for database data - survives container restarts
+      - postgres_data_dev:/var/lib/postgresql/data
+      
+      # Mount local init-scripts directory for database initialization
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    
+    # Health check ensures database is ready before other services start
+    healthcheck:
+      # Command to test if PostgreSQL is accepting connections
+      test: ["CMD-SHELL", "pg_isready -U ${DEV_POSTGRES_USER} -d ${DEV_POSTGRES_DB_NAME}"]
+      
+      # How often to run the health check (every 10 seconds)
+      interval: 10s
+      
+      # How long to wait for the health check command to complete
+      timeout: 5s
+      
+      # Number of consecutive failures needed to consider container unhealthy
+      retries: 3
+      
+      # Time to wait before starting health checks (database needs time to initialize)
+      start_period: 30s
+    
+    # Restart policy - automatically restart unless manually stopped
+    restart: unless-stopped
+    
+    # Custom network for service communication
+    networks:
+      - network_dev
+
+  # pgAdmin web interface for database management - optional but very helpful for beginners
+  pgadmin-dev:
+    # Official pgAdmin Docker image
+    # Docker image pgAdmin chính thức
+    image: dpage/pgadmin4:latest
+    # Passes environment variables into the container
+    env_file:
+    # You can specify multiple env files
+    - .env.dev
+
+    container_name: ${DEV_PGADMIN_CONTAINER_NAME:?error DEV_PGADMIN_CONTAINER_NAME not set}
+    
+    # pgAdmin configuration through environment variables
+    # Cấu hình pgAdmin thông qua biến môi trường
+    environment:
+      # Login email for pgAdmin web interface
+      # Email đăng nhập cho giao diện web pgAdmin
+      PGADMIN_DEFAULT_EMAIL: ${DEV_PGADMIN_DEFAULT_EMAIL:?error DEV_PGADMIN_DEFAULT_EMAIL not set}
+      
+      # Login password for pgAdmin web interface
+      # Mật khẩu đăng nhập cho giao diện web pgAdmin
+      PGADMIN_DEFAULT_PASSWORD: ${DEV_PGADMIN_DEFAULT_PASSWORD:?error DEV_PGADMIN_DEFAULT_PASSWORD not set}
+      
+      # Disable server mode for easier development use
+      # Tắt chế độ server để dễ sử dụng trong development
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    
+    # Web interface port mapping
+    # Ánh xạ cổng cho giao diện web
+    ports:
+      - "${DEV_PGADMIN_PORT}:${DEV_PGADMIN_INTERNAL_PORT}"  # Access pgAdmin at http://localhost:8080 / Truy cập pgAdmin tại http://localhost:8080
+    
+    # Wait for PostgreSQL to be healthy before starting pgAdmin
+    # Chờ PostgreSQL khỏe mạnh trước khi khởi động pgAdmin
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+    
+    # Persistent storage for pgAdmin settings and saved queries
+    # Lưu trữ lâu dài cho cài đặt pgAdmin và các query đã lưu
+    volumes:
+      - pgadmin_data_dev:/var/lib/pgadmin
+    
+    # Same restart policy as database
+    # Cùng chính sách restart với database
+    restart: unless-stopped
+    
+    # Connect to the same network as PostgreSQL
+    # Kết nối cùng mạng với PostgreSQL
+    networks:
+      - network_dev
+
+# Volumes – Persistent storage for all environments(data survives container deletion)
+volumes:
+  # Development volumes
+  postgres_data_dev:
+    driver: local  # Store on local disk/ Lưu trữ trên ổ đĩa local
+    
+  # pgAdmin dev configuration and user data
+  pgadmin_data_dev:
+    driver: local
+
+# Networks - Custom network for service isolation and communication
+networks:
+  # Bridge network allows containers to communicate by name
+  network_dev:
+    driver: bridge
+    # Optional: specify subnet for predictable IP addressing
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+  
+  # network_staging:
+  #   driver: bridge
+  #   ipam:
+  #     config:
+  #       - subnet: 172.21.0.0/16
